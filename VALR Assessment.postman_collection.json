@@ -584,18 +584,44 @@
 										"exec": [
 											"const apiKey = pm.environment.get(\"yourApiKey\");",
 											"const apiSecret = pm.environment.get(\"yourApiSecret\");",
-											"const timestamp = Date.now().toString();",
+											"// ⏱ Subtract 5 seconds (5000 ms) from current time to avoid being \"too late\"",
+											"const timestamp = (Date.now() - 5000).toString();",
+											"",
 											"const method = \"POST\";",
 											"const path = \"/v1/orders/market\";",
-											"const body = JSON.stringify(pm.request.body.raw || '');",
 											"",
+											"// Set the body exactly (avoid relying on what's typed in manually)",
+											"const rawBody = {",
+											"    \"side\": \"BUY\",",
+											"    \"baseAmount\": \"0.01\",",
+											"    \"pair\": \"BTCZAR\",",
+											"    \"customerOrderId\": \"1234\",",
+											"    \"allowMargin\": \"false\"",
+											"};",
+											"",
+											"const body = JSON.stringify(rawBody);",
+											"",
+											"// Overwrite request body to match signature",
+											"pm.request.body.update(body);",
+											"",
+											"// Create the message to sign",
 											"const message = timestamp + method + path + body;",
 											"",
-											"// Generate signature using CryptoJS",
+											"// Generate the signature",
 											"const signature = CryptoJS.HmacSHA512(message, apiSecret).toString(CryptoJS.enc.Hex);",
 											"",
+											"// Save to environment",
 											"pm.environment.set(\"timestamp\", timestamp);",
-											"pm.environment.set(\"signature\", signature);"
+											"pm.environment.set(\"signature\", signature);",
+											"",
+											"// For debugging",
+											"console.log(\"timestamp:\", timestamp);",
+											"console.log(\"body:\", body);",
+											"console.log(\"message:\", message);",
+											"console.log(\"signature:\", signature);",
+											"",
+											"console.log(\"apiSecret length:\", apiSecret.length);",
+											"console.log(\"apiSecret first 10 chars:\", apiSecret.substring(0, 10));"
 										],
 										"type": "text/javascript",
 										"packages": {}
@@ -640,20 +666,25 @@
 									},
 									{
 										"key": "X-VALR-SIGNATURE",
-										"value": "{{requestSignature}}",
+										"value": "{{signature}}",
 										"description": "Request Signature generated for this request. See section about **Authentication** above to learn how to generate this request signature.",
 										"type": "text"
 									},
 									{
 										"key": "X-VALR-TIMESTAMP",
-										"value": "{{requestTimestamp}}",
+										"value": "{{timestamp}}",
 										"description": "The same timestamp used to generate the request signature (in Unix epoch time format, in milliseconds). \n\nExample: If the current date and time is `December 28, 2019 00:00:00 UTC`. then the Unix epoch time would be `1577491200000`. Note that this timestamp is in milliseconds.",
 										"type": "text"
 									}
 								],
 								"body": {
 									"mode": "raw",
-									"raw": "{\n\t\"side\": \"BUY\",\n\t\"baseAmount\": \"0.01\",\n\t\"pair\": \"BTCZAR\",\n\t\"customerOrderId\": \"1234\",\n    \"allowMargin\": \"false\"\n}"
+									"raw": "{\"side\":\"BUY\",\"baseAmount\":\"0.01\",\"pair\":\"BTCZAR\",\"customerOrderId\":\"1234\",\"allowMargin\":\"false\"}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
 								},
 								"url": {
 									"raw": "{{apiBaseUrl}}/v1/orders/market",
@@ -6300,6 +6331,117 @@
 					]
 				}
 			]
+		}
+	],
+	"auth": {
+		"type": "apikey",
+		"apikey": [
+			{
+				"key": "value",
+				"value": "b9fb68df5485639d03c3171cf6e49b89e52fd78d5c313819b9c592b59c689f33",
+				"type": "string"
+			},
+			{
+				"key": "key",
+				"value": "x-api-key",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					"// /* Pre-requisite",
+					"// ==================",
+					"// 1) Create a new Environment in Postman.",
+					"// 2) Add two variables: \"yourApiKey\" and \"yourApiSecret\" to the Environment. Provide appropriate initial values for these variables. That is, the Api Key and Api Secret for your account.",
+					"// 3) Enable this environment for your requests.",
+					"// 4) For each request, this script generates the following two new environment variables:",
+					"",
+					"// * requestSignature",
+					"// * requestTimestamp",
+					"",
+					"// 5) Ensure that the following three headers are sent with every request:",
+					"",
+					"// X-VALR-API-KEY: {{yourApiKey}}",
+					"// X-VALR-SIGNATURE: {{requestSignature}}",
+					"// X-VALR-TIMESTAMP: {{requestTimestamp}}",
+					"",
+					"// Subaccounts",
+					"// ==================",
+					"// To perform a request impersonating a specific subaccount, the subaccount ID must be provided. The ID can be determined by using `Account/Subaccounts/Retrieve Subaccounts`. Once the ID is determined, it can be added to the request by either adding the `X-VALR-SUB-ACCOUNT-ID` header, with the ID as value, to the request directly, or by adding the variable {{yourSubAccountId}} to the Postman Environment. If both are provided, the header has precedence. If the variable is provided it will be added to every request.",
+					"",
+					"// Please note: Requests that may only be performed on the Primary account will fail with a \"401: Unauthorized\" response if the subaccount ID is included.",
+					"",
+					"// */",
+					"",
+					"// var YOUR_API_KEY = postman.getEnvironmentVariable('yourApiKey');",
+					"// var YOUR_API_SECRET = postman.getEnvironmentVariable('yourApiSecret');",
+					"",
+					"// var subAccountHeader = pm.request.headers.find((header) => header.key === 'X-VALR-SUB-ACCOUNT-ID' && !header.disabled)",
+					"// var YOUR_SUB_ACCOUNT_ID = subAccountHeader ? subAccountHeader.value ",
+					"//         : postman.getEnvironmentVariable('yourSubAccountId');",
+					"",
+					"// var requestTimestamp = (new Date()).getTime();",
+					"",
+					"// function getPath(url) {",
+					"//     var pathRegex = /(?:.+?\\:\\/\\/.+?)?(\\/.+)/;",
+					"//     var result = url.match(pathRegex);",
+					"//     return result && result.length > 1 ? result[1] : ''; ",
+					"// }",
+					"",
+					" ",
+					"// function getHmacDigest(httpMethod, requestUrl, requestBody) {",
+					"//     var requestPath = getPath(requestUrl.toString());",
+					"//     if (httpMethod == 'GET' || !requestBody) {",
+					"//         requestBody = ''; ",
+					"//     } ",
+					"",
+					"//     var requestData = [requestTimestamp, httpMethod.toUpperCase(), requestPath, requestBody, YOUR_SUB_ACCOUNT_ID].join(\"\");",
+					"//     var hmacDigest = CryptoJS.enc.Hex.stringify(CryptoJS.HmacSHA512(requestData, YOUR_API_SECRET));",
+					"//     return hmacDigest;",
+					"// }",
+					" ",
+					"// postman.setEnvironmentVariable('requestSignature', getHmacDigest(pm.request.method, pm.request.url, pm.request.body));",
+					"// postman.setEnvironmentVariable('requestTimestamp', requestTimestamp);",
+					"",
+					"// if (YOUR_SUB_ACCOUNT_ID && YOUR_SUB_ACCOUNT_ID > 0 && !subAccountHeader) {",
+					"//     pm.request.headers.add({ key: 'X-VALR-SUB-ACCOUNT-ID', value: `${YOUR_SUB_ACCOUNT_ID}` });",
+					"// }",
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "apiBaseUrl",
+			"value": "https://api.valr.com",
+			"type": "string"
+		},
+		{
+			"key": "yourApiKey",
+			"value": "b9fb68df5485639d03c3171cf6e49b89e52fd78d5c313819b9c592b59c689f33",
+			"type": "string"
+		},
+		{
+			"key": "yourApiSecret",
+			"value": "4961b74efac86b25cce8fbe4c9811c4c7a787b7a5996660afcc2e287ad864363",
+			"type": "string"
 		}
 	]
 }
